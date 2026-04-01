@@ -1,0 +1,477 @@
+import { useState, useEffect, FormEvent } from "react";
+import { Layout } from "../components/Layout";
+import { api } from "../services/api";
+import { Service, ServiceStatus, CreateServiceRequest, UpdateServiceRequest } from "../types/service";
+import { Vehicle } from "../types/vehicle";
+
+type ServiceFormData = CreateServiceRequest & { status?: ServiceStatus };
+
+export const Services = () => {
+  const [services, setServices] = useState<Service[]>([]);
+  const [vehicles, setVehicles] = useState<Vehicle[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
+  const [showModal, setShowModal] = useState(false);
+  const [editingService, setEditingService] = useState<Service | null>(null);
+  const [filterStatus, setFilterStatus] = useState<ServiceStatus | "all">("all");
+  const [error, setError] = useState("");
+
+  const [formData, setFormData] = useState<ServiceFormData>({
+    vehicle_id: "",
+    description: "",
+    cost: 0,
+  });
+
+  useEffect(() => {
+    fetchData();
+  }, []);
+
+  const fetchData = async () => {
+    try {
+      const [servicesRes, vehiclesRes] = await Promise.all([
+        api.get<{ data: Service[] }>("/services"),
+        api.get<{ data: Vehicle[] }>("/vehicles"),
+      ]);
+      setServices(servicesRes.data.data);
+      setVehicles(vehiclesRes.data.data);
+    } catch (error) {
+      console.error("Error fetching data:", error);
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const handleSubmit = async (e: FormEvent) => {
+    e.preventDefault();
+    setError("");
+
+    try {
+      if (editingService) {
+        // When updating, include all fields including status
+        const updateData: UpdateServiceRequest = {
+          description: formData.description,
+          cost: formData.cost,
+          status: formData.status!,
+        };
+        await api.put(`/services/${editingService.id}`, updateData);
+      } else {
+        // When creating, only send vehicle_id, description, and cost (no status)
+        const createData: CreateServiceRequest = {
+          vehicle_id: formData.vehicle_id,
+          description: formData.description,
+          cost: formData.cost,
+        };
+        await api.post("/services", createData);
+      }
+
+      fetchData();
+      closeModal();
+    } catch (err: any) {
+      setError(err.response?.data?.error || "Error al guardar el servicio");
+    }
+  };
+
+  const handleDelete = async (id: string) => {
+    if (!confirm("¿Estás seguro de eliminar este servicio?")) return;
+
+    try {
+      await api.delete(`/services/${id}`);
+      fetchData();
+    } catch (error) {
+      console.error("Error deleting service:", error);
+    }
+  };
+
+  const handleStatusChange = async (id: string, newStatus: ServiceStatus) => {
+    try {
+      const service = services.find((s) => s.id === id);
+      if (!service) return;
+
+      await api.put(`/services/${id}`, {
+        description: service.description,
+        cost: service.cost,
+        status: newStatus,
+      });
+
+      fetchData();
+    } catch (error) {
+      console.error("Error updating status:", error);
+    }
+  };
+
+  const openModal = (service?: Service) => {
+    if (service) {
+      setEditingService(service);
+      setFormData({
+        vehicle_id: service.vehicle_id,
+        description: service.description,
+        cost: service.cost,
+        status: service.status,
+      });
+    } else {
+      setEditingService(null);
+      setFormData({
+        vehicle_id: "",
+        description: "",
+        cost: 0,
+      });
+    }
+    setError("");
+    setShowModal(true);
+  };
+
+  const closeModal = () => {
+    setShowModal(false);
+    setEditingService(null);
+    setError("");
+  };
+
+  const getStatusColor = (status: ServiceStatus) => {
+    switch (status) {
+      case "pending":
+        return "bg-yellow-100 text-yellow-800";
+      case "in_progress":
+        return "bg-blue-100 text-blue-800";
+      case "completed":
+        return "bg-green-100 text-green-800";
+      case "cancelled":
+        return "bg-red-100 text-red-800";
+      default:
+        return "bg-gray-100 text-gray-800";
+    }
+  };
+
+  const getStatusLabel = (status: ServiceStatus) => {
+    switch (status) {
+      case "pending":
+        return "Pendiente";
+      case "in_progress":
+        return "En Progreso";
+      case "completed":
+        return "Completado";
+      case "cancelled":
+        return "Cancelado";
+      default:
+        return status;
+    }
+  };
+
+  const getVehicleInfo = (vehicleId: string) => {
+    const vehicle = vehicles.find((v) => v.id === vehicleId);
+    return vehicle
+      ? `${vehicle.plate_number} - ${vehicle.vehicle_model}`
+      : "N/A";
+  };
+
+  const filteredServices =
+    filterStatus === "all"
+      ? services
+      : services.filter((s) => s.status === filterStatus);
+
+  if (isLoading) {
+    return (
+      <Layout>
+        <div className="flex justify-center items-center h-64">
+          <div className="animate-spin rounded-full h-16 w-16 border-b-4 border-primary-600"></div>
+        </div>
+      </Layout>
+    );
+  }
+
+  return (
+    <Layout>
+      <div className="space-y-6">
+        <div className="flex justify-between items-center">
+          <h1 className="text-3xl font-bold text-gray-900">Servicios</h1>
+          <button
+            onClick={() => openModal()}
+            className="bg-primary-600 hover:bg-primary-700 text-white px-6 py-3 rounded-lg font-medium transition-colors flex items-center"
+          >
+            <svg
+              className="h-5 w-5 mr-2"
+              fill="none"
+              stroke="currentColor"
+              viewBox="0 0 24 24"
+            >
+              <path
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                strokeWidth={2}
+                d="M12 4v16m8-8H4"
+              />
+            </svg>
+            Nuevo Servicio
+          </button>
+        </div>
+
+        {/* Filter */}
+        <div className="bg-white rounded-lg shadow-md p-4">
+          <div className="flex space-x-2">
+            <button
+              onClick={() => setFilterStatus("all")}
+              className={`px-4 py-2 rounded-lg font-medium transition-colors ${
+                filterStatus === "all"
+                  ? "bg-primary-600 text-white"
+                  : "bg-gray-200 text-gray-700 hover:bg-gray-300"
+              }`}
+            >
+              Todos
+            </button>
+            <button
+              onClick={() => setFilterStatus("pending")}
+              className={`px-4 py-2 rounded-lg font-medium transition-colors ${
+                filterStatus === "pending"
+                  ? "bg-yellow-500 text-white"
+                  : "bg-gray-200 text-gray-700 hover:bg-gray-300"
+              }`}
+            >
+              Pendientes
+            </button>
+            <button
+              onClick={() => setFilterStatus("in_progress")}
+              className={`px-4 py-2 rounded-lg font-medium transition-colors ${
+                filterStatus === "in_progress"
+                  ? "bg-blue-500 text-white"
+                  : "bg-gray-200 text-gray-700 hover:bg-gray-300"
+              }`}
+            >
+              En Progreso
+            </button>
+            <button
+              onClick={() => setFilterStatus("completed")}
+              className={`px-4 py-2 rounded-lg font-medium transition-colors ${
+                filterStatus === "completed"
+                  ? "bg-green-500 text-white"
+                  : "bg-gray-200 text-gray-700 hover:bg-gray-300"
+              }`}
+            >
+              Completados
+            </button>
+          </div>
+        </div>
+
+        {/* Services Grid */}
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+          {filteredServices.map((service) => (
+            <div
+              key={service.id}
+              className="bg-white rounded-lg shadow-md p-6 space-y-4"
+            >
+              <div className="flex justify-between items-start">
+                <span
+                  className={`px-3 py-1 rounded-full text-xs font-semibold ${getStatusColor(
+                    service.status
+                  )}`}
+                >
+                  {getStatusLabel(service.status)}
+                </span>
+                <div className="flex space-x-2">
+                  <button
+                    onClick={() => openModal(service)}
+                    className="text-primary-600 hover:text-primary-900"
+                  >
+                    <svg
+                      className="h-5 w-5"
+                      fill="none"
+                      stroke="currentColor"
+                      viewBox="0 0 24 24"
+                    >
+                      <path
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                        strokeWidth={2}
+                        d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"
+                      />
+                    </svg>
+                  </button>
+                  <button
+                    onClick={() => handleDelete(service.id)}
+                    className="text-red-600 hover:text-red-900"
+                  >
+                    <svg
+                      className="h-5 w-5"
+                      fill="none"
+                      stroke="currentColor"
+                      viewBox="0 0 24 24"
+                    >
+                      <path
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                        strokeWidth={2}
+                        d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"
+                      />
+                    </svg>
+                  </button>
+                </div>
+              </div>
+
+              <div>
+                <h3 className="text-sm text-gray-500">Vehículo</h3>
+                <p className="text-base font-semibold text-gray-900">
+                  {getVehicleInfo(service.vehicle_id)}
+                </p>
+              </div>
+
+              <div>
+                <h3 className="text-sm text-gray-500">Descripción</h3>
+                <p className="text-base text-gray-900">{service.description}</p>
+              </div>
+
+              <div>
+                <h3 className="text-sm text-gray-500">Costo</h3>
+                <p className="text-xl font-bold text-primary-600">
+                  ${service.cost.toFixed(2)}
+                </p>
+              </div>
+
+              {/* Status Change Buttons */}
+              {service.status !== "completed" &&
+                service.status !== "cancelled" && (
+                  <div className="pt-2 space-y-2">
+                    {service.status === "pending" && (
+                      <button
+                        onClick={() =>
+                          handleStatusChange(service.id, "in_progress")
+                        }
+                        className="w-full bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg font-medium transition-colors"
+                      >
+                        Iniciar Trabajo
+                      </button>
+                    )}
+                    {service.status === "in_progress" && (
+                      <button
+                        onClick={() =>
+                          handleStatusChange(service.id, "completed")
+                        }
+                        className="w-full bg-green-600 hover:bg-green-700 text-white px-4 py-2 rounded-lg font-medium transition-colors"
+                      >
+                        Marcar Completado
+                      </button>
+                    )}
+                  </div>
+                )}
+            </div>
+          ))}
+        </div>
+
+        {filteredServices.length === 0 && (
+          <div className="bg-white rounded-lg shadow-md p-12 text-center">
+            <p className="text-gray-500 text-lg">No se encontraron servicios</p>
+          </div>
+        )}
+      </div>
+
+      {/* Modal */}
+      {showModal && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+          <div className="bg-white rounded-lg p-8 max-w-md w-full mx-4 max-h-[90vh] overflow-y-auto">
+            <h2 className="text-2xl font-bold mb-6">
+              {editingService ? "Editar Servicio" : "Nuevo Servicio"}
+            </h2>
+
+            {error && (
+              <div className="bg-red-100 border border-red-400 text-red-700 px-4 py-3 rounded mb-4">
+                {error}
+              </div>
+            )}
+
+            <form onSubmit={handleSubmit} className="space-y-4">
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  Vehículo
+                </label>
+                <select
+                  required
+                  value={formData.vehicle_id}
+                  onChange={(e) =>
+                    setFormData({ ...formData, vehicle_id: e.target.value })
+                  }
+                  className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary-500"
+                >
+                  <option value="">Seleccionar vehículo</option>
+                  {vehicles.map((vehicle) => (
+                    <option key={vehicle.id} value={vehicle.id}>
+                      {vehicle.plate_number} - {vehicle.vehicle_model} (
+                      {vehicle.client_name})
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  Descripción
+                </label>
+                <textarea
+                  required
+                  rows={4}
+                  value={formData.description}
+                  onChange={(e) =>
+                    setFormData({ ...formData, description: e.target.value })
+                  }
+                  className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary-500"
+                />
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  Costo
+                </label>
+                <input
+                  type="number"
+                  step="0.01"
+                  min="0"
+                  required
+                  value={formData.cost}
+                  onChange={(e) =>
+                    setFormData({ ...formData, cost: parseFloat(e.target.value) })
+                  }
+                  className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary-500"
+                />
+              </div>
+
+              {editingService && (
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                    Estado
+                  </label>
+                  <select
+                    required
+                    value={formData.status || "pending"}
+                    onChange={(e) =>
+                      setFormData({
+                        ...formData,
+                        status: e.target.value as ServiceStatus,
+                      })
+                    }
+                    className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary-500"
+                  >
+                    <option value="pending">Pendiente</option>
+                    <option value="in_progress">En Progreso</option>
+                    <option value="completed">Completado</option>
+                    <option value="cancelled">Cancelado</option>
+                  </select>
+                </div>
+              )}
+
+              <div className="flex space-x-4 pt-4">
+                <button
+                  type="submit"
+                  className="flex-1 bg-primary-600 hover:bg-primary-700 text-white px-6 py-3 rounded-lg font-medium transition-colors"
+                >
+                  {editingService ? "Actualizar" : "Crear"}
+                </button>
+                <button
+                  type="button"
+                  onClick={closeModal}
+                  className="flex-1 bg-gray-300 hover:bg-gray-400 text-gray-800 px-6 py-3 rounded-lg font-medium transition-colors"
+                >
+                  Cancelar
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+    </Layout>
+  );
+};

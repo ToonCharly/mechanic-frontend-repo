@@ -1,0 +1,440 @@
+import { useState, useEffect, FormEvent } from "react";
+import { Layout } from "../components/Layout";
+import { api } from "../services/api";
+import { Payment, PaymentMethod, CreatePaymentRequest } from "../types/payment";
+import { Service } from "../types/service";
+
+export const Payments = () => {
+  const [payments, setPayments] = useState<Payment[]>([]);
+  const [services, setServices] = useState<Service[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
+  const [showModal, setShowModal] = useState(false);
+  const [error, setError] = useState("");
+
+  const [formData, setFormData] = useState<CreatePaymentRequest>({
+    service_id: "",
+    amount: 0,
+    payment_method: "cash",
+    payment_date: new Date().toISOString().split("T")[0],
+    notes: "",
+  });
+
+  useEffect(() => {
+    fetchData();
+  }, []);
+
+  const fetchData = async () => {
+    try {
+      const [paymentsRes, servicesRes] = await Promise.all([
+        api.get<{ data: Payment[] }>("/payments"),
+        api.get<{ data: Service[] }>("/services"),
+      ]);
+      setPayments(paymentsRes.data.data);
+      setServices(servicesRes.data.data);
+    } catch (error) {
+      console.error("Error fetching data:", error);
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const handleSubmit = async (e: FormEvent) => {
+    e.preventDefault();
+    setError("");
+
+    try {
+      await api.post("/payments", formData);
+      fetchData();
+      closeModal();
+    } catch (err: any) {
+      setError(err.response?.data?.error || "Error al registrar el pago");
+    }
+  };
+
+  const handleDelete = async (id: string) => {
+    if (!confirm("¿Estás seguro de eliminar este pago?")) return;
+
+    try {
+      await api.delete(`/payments/${id}`);
+      fetchData();
+    } catch (error) {
+      console.error("Error deleting payment:", error);
+    }
+  };
+
+  const openModal = () => {
+    setFormData({
+      service_id: "",
+      amount: 0,
+      payment_method: "cash",
+      payment_date: new Date().toISOString().split("T")[0],
+      notes: "",
+    });
+    setError("");
+    setShowModal(true);
+  };
+
+  const closeModal = () => {
+    setShowModal(false);
+    setError("");
+  };
+
+  const getServiceInfo = (serviceId: string) => {
+    const service = services.find((s) => s.id === serviceId);
+    return service ? service.description : "N/A";
+  };
+
+  const getServiceCost = (serviceId: string) => {
+    const service = services.find((s) => s.id === serviceId);
+    return service ? service.cost : 0;
+  };
+
+  const getTotalPaid = (serviceId: string) => {
+    return payments
+      .filter((p) => p.service_id === serviceId)
+      .reduce((sum, p) => sum + p.amount, 0);
+  };
+
+  const getPendingAmount = (serviceId: string) => {
+    const cost = getServiceCost(serviceId);
+    const paid = getTotalPaid(serviceId);
+    return cost - paid;
+  };
+
+  const getPaymentMethodLabel = (method: PaymentMethod) => {
+    switch (method) {
+      case "cash":
+        return "Efectivo";
+      case "card":
+        return "Tarjeta";
+      case "transfer":
+        return "Transferencia";
+      case "other":
+        return "Otro";
+      default:
+        return method;
+    }
+  };
+
+  const totalAmount = payments.reduce((sum, p) => sum + p.amount, 0);
+
+  if (isLoading) {
+    return (
+      <Layout>
+        <div className="flex justify-center items-center h-64">
+          <div className="animate-spin rounded-full h-16 w-16 border-b-4 border-primary-600"></div>
+        </div>
+      </Layout>
+    );
+  }
+
+  return (
+    <Layout>
+      <div className="space-y-6">
+        <div className="flex justify-between items-center">
+          <h1 className="text-3xl font-bold text-gray-900">Pagos</h1>
+          <button
+            onClick={openModal}
+            className="bg-primary-600 hover:bg-primary-700 text-white px-6 py-3 rounded-lg font-medium transition-colors flex items-center"
+          >
+            <svg
+              className="h-5 w-5 mr-2"
+              fill="none"
+              stroke="currentColor"
+              viewBox="0 0 24 24"
+            >
+              <path
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                strokeWidth={2}
+                d="M12 4v16m8-8H4"
+              />
+            </svg>
+            Registrar Pago
+          </button>
+        </div>
+
+        {/* Total Summary */}
+        <div className="bg-gradient-to-r from-green-500 to-green-600 rounded-lg shadow-lg p-6 text-white">
+          <h2 className="text-lg font-medium mb-2">Total Recaudado</h2>
+          <p className="text-4xl font-bold">${totalAmount.toFixed(2)}</p>
+          <p className="text-sm mt-2 opacity-90">
+            {payments.length} pagos registrados
+          </p>
+        </div>
+
+        {/* Payments Table */}
+        <div className="bg-white rounded-lg shadow-md overflow-hidden">
+          <table className="min-w-full divide-y divide-gray-200">
+            <thead className="bg-gray-50">
+              <tr>
+                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                  Fecha
+                </th>
+                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                  Servicio
+                </th>
+                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                  Monto
+                </th>
+                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                  Método
+                </th>
+                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                  Saldo
+                </th>
+                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                  Notas
+                </th>
+                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                  Acciones
+                </th>
+              </tr>
+            </thead>
+            <tbody className="bg-white divide-y divide-gray-200">
+              {payments.map((payment) => {
+                const pending = getPendingAmount(payment.service_id);
+                return (
+                  <tr key={payment.id} className="hover:bg-gray-50">
+                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+                      {new Date(payment.payment_date).toLocaleDateString()}
+                    </td>
+                    <td className="px-6 py-4 text-sm text-gray-900">
+                      <div className="max-w-xs truncate">
+                        {getServiceInfo(payment.service_id)}
+                      </div>
+                    </td>
+                    <td className="px-6 py-4 whitespace-nowrap text-sm font-bold text-green-600">
+                      ${payment.amount.toFixed(2)}
+                    </td>
+                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                      {getPaymentMethodLabel(payment.payment_method)}
+                    </td>
+                    <td className="px-6 py-4 whitespace-nowrap text-sm">
+                      {pending > 0 ? (
+                        <span className="text-red-600 font-semibold">
+                          ${pending.toFixed(2)}
+                        </span>
+                      ) : (
+                        <span className="text-green-600 font-semibold">
+                          Pagado
+                        </span>
+                      )}
+                    </td>
+                    <td className="px-6 py-4 text-sm text-gray-500">
+                      <div className="max-w-xs truncate">
+                        {payment.notes || "-"}
+                      </div>
+                    </td>
+                    <td className="px-6 py-4 whitespace-nowrap text-sm">
+                      <button
+                        onClick={() => handleDelete(payment.id)}
+                        className="text-red-600 hover:text-red-900 font-medium"
+                      >
+                        Eliminar
+                      </button>
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+
+          {payments.length === 0 && (
+            <div className="text-center py-12">
+              <p className="text-gray-500 text-lg">
+                No se encontraron pagos registrados
+              </p>
+            </div>
+          )}
+        </div>
+
+        {/* Services with Pending Payments */}
+        <div className="bg-white rounded-lg shadow-md p-6">
+          <h2 className="text-xl font-bold text-gray-900 mb-4">
+            Servicios con Saldo Pendiente
+          </h2>
+          <div className="space-y-2">
+            {services
+              .filter((service) => {
+                const pending = getPendingAmount(service.id);
+                return pending > 0 && service.status !== "cancelled";
+              })
+              .map((service) => {
+                const pending = getPendingAmount(service.id);
+                const paid = getTotalPaid(service.id);
+                return (
+                  <div
+                    key={service.id}
+                    className="flex justify-between items-center p-4 bg-gray-50 rounded-lg"
+                  >
+                    <div className="flex-1">
+                      <p className="font-medium text-gray-900">
+                        {service.description}
+                      </p>
+                      <p className="text-sm text-gray-500">
+                        Costo: ${service.cost.toFixed(2)} | Pagado: $
+                        {paid.toFixed(2)}
+                      </p>
+                    </div>
+                    <div className="text-right">
+                      <p className="text-lg font-bold text-red-600">
+                        ${pending.toFixed(2)}
+                      </p>
+                      <p className="text-xs text-gray-500">Pendiente</p>
+                    </div>
+                  </div>
+                );
+              })}
+            {services.filter(
+              (s) => getPendingAmount(s.id) > 0 && s.status !== "cancelled"
+            ).length === 0 && (
+              <p className="text-gray-500 text-center py-4">
+                No hay servicios con saldo pendiente
+              </p>
+            )}
+          </div>
+        </div>
+      </div>
+
+      {/* Modal */}
+      {showModal && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+          <div className="bg-white rounded-lg p-8 max-w-md w-full mx-4">
+            <h2 className="text-2xl font-bold mb-6">Registrar Pago</h2>
+
+            {error && (
+              <div className="bg-red-100 border border-red-400 text-red-700 px-4 py-3 rounded mb-4">
+                {error}
+              </div>
+            )}
+
+            <form onSubmit={handleSubmit} className="space-y-4">
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  Servicio
+                </label>
+                <select
+                  required
+                  value={formData.service_id}
+                  onChange={(e) => {
+                    const serviceId = e.target.value;
+                    const cost = getServiceCost(serviceId);
+                    const paid = getTotalPaid(serviceId);
+                    const pending = cost - paid;
+                    setFormData({
+                      ...formData,
+                      service_id: serviceId,
+                      amount: pending > 0 ? pending : 0,
+                    });
+                  }}
+                  className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary-500"
+                >
+                  <option value="">Seleccionar servicio</option>
+                  {services
+                    .filter((s) => s.status !== "cancelled")
+                    .map((service) => {
+                      const pending = getPendingAmount(service.id);
+                      return (
+                        <option key={service.id} value={service.id}>
+                          {service.description} - ${service.cost.toFixed(2)}{" "}
+                          {pending > 0 && `(Pend: $${pending.toFixed(2)})`}
+                        </option>
+                      );
+                    })}
+                </select>
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  Monto
+                </label>
+                <input
+                  type="number"
+                  step="0.01"
+                  min="0.01"
+                  required
+                  value={formData.amount}
+                  onChange={(e) =>
+                    setFormData({
+                      ...formData,
+                      amount: parseFloat(e.target.value),
+                    })
+                  }
+                  className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary-500"
+                />
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  Método de Pago
+                </label>
+                <select
+                  required
+                  value={formData.payment_method}
+                  onChange={(e) =>
+                    setFormData({
+                      ...formData,
+                      payment_method: e.target.value as PaymentMethod,
+                    })
+                  }
+                  className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary-500"
+                >
+                  <option value="cash">Efectivo</option>
+                  <option value="card">Tarjeta</option>
+                  <option value="transfer">Transferencia</option>
+                  <option value="other">Otro</option>
+                </select>
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  Fecha
+                </label>
+                <input
+                  type="date"
+                  required
+                  value={formData.payment_date}
+                  onChange={(e) =>
+                    setFormData({ ...formData, payment_date: e.target.value })
+                  }
+                  className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary-500"
+                />
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  Notas (opcional)
+                </label>
+                <textarea
+                  rows={3}
+                  value={formData.notes}
+                  onChange={(e) =>
+                    setFormData({ ...formData, notes: e.target.value })
+                  }
+                  className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary-500"
+                />
+              </div>
+
+              <div className="flex space-x-4 pt-4">
+                <button
+                  type="submit"
+                  className="flex-1 bg-primary-600 hover:bg-primary-700 text-white px-6 py-3 rounded-lg font-medium transition-colors"
+                >
+                  Registrar
+                </button>
+                <button
+                  type="button"
+                  onClick={closeModal}
+                  className="flex-1 bg-gray-300 hover:bg-gray-400 text-gray-800 px-6 py-3 rounded-lg font-medium transition-colors"
+                >
+                  Cancelar
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+    </Layout>
+  );
+};
