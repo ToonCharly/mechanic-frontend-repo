@@ -6,7 +6,7 @@ services:
     staticPublishPath: ./dist
     envVars:
       - key: VITE_API_URL
-        value: https://tu-backend-url.onrender.com/api/v1 # TODO: Cambia esto por la URL real de tu backend
+        value: https://mechanic-backend-cdy5.onrender.com/api/v1
     routes:
       - type: rewrite
         source: /*
