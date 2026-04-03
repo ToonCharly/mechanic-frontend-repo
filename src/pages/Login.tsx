@@ -43,9 +43,16 @@ export const Login = () => {
       // Clear saved email on successful login
       localStorage.removeItem(LOGIN_EMAIL_KEY);
       navigate("/");
-    } catch (err: any) {
-      const errorMsg = err.response?.data?.error ||
-        "Error al iniciar sesión. Verifica tus credenciales.";
+    } catch (err: unknown) {
+      const errorMsg =
+        typeof err === "object" &&
+        err !== null &&
+        "response" in err &&
+        typeof (err as { response?: { data?: { error?: unknown } } }).response
+          ?.data?.error === "string"
+          ? (err as { response?: { data?: { error?: string } } }).response?.data
+              ?.error || "Error al iniciar sesión. Verifica tus credenciales."
+          : "Error al iniciar sesión. Verifica tus credenciales.";
       setError(errorMsg);
       showSnackbar({ message: errorMsg, type: "error" });
     } finally {
@@ -58,7 +65,7 @@ export const Login = () => {
       <div className="max-w-md w-full space-y-8 bg-white p-10 rounded-xl shadow-2xl">
         <div>
           <h2 className="text-center text-4xl font-extrabold text-gray-900">
-            🚗 F&F Workshop
+            Taller Mecanico Champion
           </h2>
           <p className="mt-2 text-center text-sm text-gray-600">
             Ingresa a tu cuenta

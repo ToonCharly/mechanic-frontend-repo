@@ -1,4 +1,4 @@
-import { useState, useEffect, FormEvent } from "react";
+import { useState, useEffect, FormEvent, useRef, useCallback } from "react";
 import { Layout } from "../components/Layout";
 import { api } from "../services/api";
 import { Service, ServiceStatus, ServiceItem, CreateServiceRequest, UpdateServiceRequest } from "../types/service";
@@ -7,6 +7,8 @@ import { useConfirm } from "../components/ConfirmDialog";
 import { useSnackbar } from "../components/Snackbar";
 import { AxiosError } from "axios";
 import { useNavigate } from "react-router-dom";
+import { ServiceNotePDF } from "../components/ServiceNotePDF";
+import html2canvas from "html2canvas";
 
 type ServiceFormData = {
   vehicle_id: string;
@@ -34,17 +36,62 @@ export const Services = () => {
   const [totalItems, setTotalItems] = useState(0);
   const [itemsPerPage] = useState(10);
 
+  const componentToPrintRef = useRef<HTMLDivElement>(null);
+  
+  const handleShare = async () => {
+    const element = componentToPrintRef.current;
+    if (!element) return;
+
+    try {
+      showSnackbar({ message: "Generando imagen...", type: "success" });
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const canvas = await html2canvas(element, { scale: 2, useCORS: true } as any);
+      
+      canvas.toBlob(async (blob: Blob | null) => {
+        if (!blob) {
+          showSnackbar({ message: "Error al generar la imagen", type: "error" });
+          return;
+        }
+        
+        const file = new File([blob], `Nota_Servicio.png`, { type: 'image/png' });
+        
+        if (navigator.share && navigator.canShare && navigator.canShare({ files: [file] })) {
+          try {
+            await navigator.share({
+              title: 'Nota de Servicio - F&F Workshop',
+              text: 'Adjunto su nota de servicio.',
+              files: [file]
+            });
+            showSnackbar({ message: "Nota compartida exitosamente", type: "success" });
+          } catch (error) {
+            console.error("Error compartiendo:", error);
+            // If the user cancelled sharing, don't show an error
+          }
+        } else {
+          // Fallback if sharing files is not supported (e.g., most desktop browsers)
+          const url = URL.createObjectURL(blob);
+          const link = document.createElement("a");
+          link.download = "Nota_Servicio.png";
+          link.href = url;
+          document.body.appendChild(link);
+          link.click();
+          document.body.removeChild(link);
+          showSnackbar({ message: "Imagen descargada. Puedes compartirla manualmente.", type: "success" });
+        }
+      }, 'image/png');
+    } catch (error) {
+      console.error("Error al generar la vista:", error);
+      showSnackbar({ message: "No se pudo crear la imagen de la nota", type: "error" });
+    }
+  };
+
   const [formData, setFormData] = useState<ServiceFormData>({
     vehicle_id: "",
     description: "",
     items: [{ description: "", quantity: 1, price: 0 }],
   });
 
-  useEffect(() => {
-    fetchData();
-  }, [currentPage]);
-
-  const fetchData = async () => {
+  const fetchData = useCallback(async () => {
     try {
       setIsLoading(true);
       const servicesRes = await api.get<{ data: Service[], pagination: { page: number, limit: number, total: number, total_pages: number } }>(
@@ -62,7 +109,11 @@ export const Services = () => {
     } finally {
       setIsLoading(false);
     }
-  };
+  }, [currentPage, itemsPerPage]);
+
+  useEffect(() => {
+    fetchData();
+  }, [fetchData]);
 
   const handleSubmit = async (e: FormEvent) => {
     e.preventDefault();
@@ -418,6 +469,15 @@ const getVehicleInfo = (vehicle: Vehicle | undefined) => {
                 >
                   Ver
                 </button>
+                <button
+                  onClick={() => {
+                    setViewingService(service);
+                    setTimeout(handleShare, 800); // 800ms para asegurar que la imagen pesada cargue
+                  }}
+                  className="px-4 py-3 sm:py-2 bg-teal-500 text-white rounded-lg hover:bg-teal-600 font-medium text-base sm:text-sm transition-colors"
+                >
+                  Enviar Nota
+                </button>
                 {service.status !== "completed" && service.status !== "cancelled" && (
                   <>
                     <button
@@ -661,7 +721,7 @@ const getVehicleInfo = (vehicle: Vehicle | undefined) => {
 
       {/* View Modal */}
       {showViewModal && viewingService && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex justify-center items-center z-50">
           <div className="bg-white rounded-lg p-6 sm:p-8 max-w-2xl w-full max-h-[90vh] overflow-y-auto">
             <div className="flex justify-between items-center mb-6">
               <h2 className="text-xl sm:text-2xl font-bold">Detalle del Servicio</h2>
@@ -765,7 +825,13 @@ const getVehicleInfo = (vehicle: Vehicle | undefined) => {
           </div>
         </div>
       )}
+      {/* Hidden component for sharing */}
+      <div style={{ position: "absolute", left: "-9999px", top: "-9999px" }}>
+        {viewingService && <ServiceNotePDF ref={componentToPrintRef} service={viewingService} />}
+      </div>
     </Layout>
   );
 };
+
+export default Services;
 

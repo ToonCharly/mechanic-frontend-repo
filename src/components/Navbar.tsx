@@ -54,7 +54,7 @@ export const Navbar = () => {
           {/* Logo y menú desktop */}
           <div className="flex items-center flex-1">
             <div className="flex-shrink-0">
-              <h1 className="text-white text-xl sm:text-2xl font-bold">🚗 F&F Workshop</h1>
+              <h1 className="text-white text-xl sm:text-2xl font-bold">Taller Mecanico Champion</h1>
             </div>
             <div className="hidden md:block">
               <div className="ml-10 flex items-baseline space-x-4">

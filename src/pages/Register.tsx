@@ -51,9 +51,16 @@ export const Register = () => {
       showSnackbar({ message: "Registro exitoso. Bienvenido!", type: "success" });
       // Redirect a dashboard
       navigate("/");
-    } catch (err: any) {
-      const errorMsg = err.response?.data?.error ||
-        "Error al registrar usuario. El email puede estar en uso.";
+    } catch (err: unknown) {
+      let errorMsg = "Error al registrar usuario. El email puede estar en uso.";
+
+      if (typeof err === "object" && err !== null && "response" in err) {
+        const response = (err as { response?: { data?: { error?: string } } }).response;
+        if (typeof response?.data?.error === "string" && response.data.error.trim() !== "") {
+          errorMsg = response.data.error;
+        }
+      }
+
       setError(errorMsg);
       showSnackbar({ message: errorMsg, type: "error" });
     } finally {
@@ -66,7 +73,7 @@ export const Register = () => {
       <div className="max-w-md w-full space-y-8 bg-white p-10 rounded-xl shadow-2xl">
         <div>
           <h2 className="text-center text-4xl font-extrabold text-gray-900">
-            🚗 F&F Workshop
+            Taller Mecanico Champion
           </h2>
           <p className="mt-2 text-center text-sm text-gray-600">
             Crear nueva cuenta
