@@ -61,8 +61,9 @@ export const logoutRequest = async (): Promise<void> => {
     
     // Only notify backend if we have a valid (non-expired) access token
     if (refreshToken && accessToken && !isTokenExpired(accessToken)) {
+      const baseUrl = import.meta.env.VITE_API_URL || "http://localhost:8080/api/v1";
       // Use fetch to avoid Axios interceptors that might fail with expired tokens
-      await fetch("http://localhost:8080/api/v1/auth/logout", {
+      await fetch(`${baseUrl}/auth/logout`, {
         method: 'POST',
         headers: { 
           'Content-Type': 'application/json',
@@ -88,8 +89,9 @@ export const logoutAllDevices = async (): Promise<void> => {
     
     // Only notify backend if we have a valid (non-expired) access token
     if (accessToken && !isTokenExpired(accessToken)) {
+      const baseUrl = import.meta.env.VITE_API_URL || "http://localhost:8080/api/v1";
       // Use fetch to avoid Axios interceptors that might fail with expired tokens
-      await fetch("http://localhost:8080/api/v1/auth/logout-all", {
+      await fetch(`${baseUrl}/auth/logout-all`, {
         method: 'POST',
         headers: { 
           'Content-Type': 'application/json',

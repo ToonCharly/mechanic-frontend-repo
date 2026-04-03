@@ -78,7 +78,8 @@ api.interceptors.response.use(
           }
 
           // Call refresh endpoint using fetch to avoid interceptor loop
-          const response = await fetch("http://localhost:8080/api/v1/auth/refresh", {
+          const baseUrl = import.meta.env.VITE_API_URL || "http://localhost:8080/api/v1";
+          const response = await fetch(`${baseUrl}/auth/refresh`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             credentials: 'include',
